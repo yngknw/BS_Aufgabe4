@@ -7,48 +7,67 @@
 
 #include <linux/init.h>
 #include <linux/module.h>
-#include <linux/moduleparam.h>
+#include <linux/moduleparam.h>//for params
+//#include <sys/types.h> //for ssize_t
+#include <linux/fs.h> //filesystem
+#include <linux/cdev.h> //for chardevice
+#include <linux/fcntl.h>
+#include <linux/mutex.h>//mutex
+#include <linux/jiffies.h>
 
-#include <linux/fs.h>
-#include <linux/cdev.h>
-#include <linux/semaphore.h>
-#include <asm/uaccess.h>
+#include <asm/uaccess.h>//copy_to_user copy_from_user
 
-struct device {
-	char data[100];
-	struct semaphore sem;
-} virtual_device;
+MODULE_LICENSE("GPL");
+#define DEVICE_NAME "tzm"
 
+int ret_val_time = -1;
+int ret_val_number = -1;
+module_param(ret_val_time, int, 0644);
+module_param(ret_val_number, int, 0644);
+
+static DEFINE_MUTEX(mutex);
 struct cdev *mycdev;
-
+int oldTime;
 int major_number;
 int ret;
 dev_t dev_num;
 
-#define DEVICE_NAME "tzm"
+struct device {
+	char data[100];
+	int readingFrom;
+	int writingTo;
+} virtual_device;
+
 
 int device_open(struct inode *inode, struct file *filp) {
-	if(down_interruptible(&virtual_device.sem) != 0) {
-		printk(KERN_ALERT "tzm: could not lock device during open\n");
-		return -1;
-	}
 	printk(KERN_INFO "tzm: device opened\n");
+	//jiffies_to_msecs(get_jiffies_64());
 	return 0;
 }
 ssize_t device_read(struct file* filp, char* bufStoreData, size_t bufCount, loff_t* curOffset) {
 	printk(KERN_INFO "tzm: reading from device\n");
+	mutex_lock(&mutex);
 	ret = copy_to_user(bufStoreData, virtual_device.data, bufCount);
+	if(ret != 0) {
+		printk(KERN_ALERT "copy_to_user failed");
+		return -EFAULT;
+	}
+	mutex_unlock(&mutex);
 	return ret;
 }
-//ssize_t (*write) (struct file *, const char *, size_t, loff_t *);
 ssize_t device_write(struct file* filp, const char* bufSourceData, size_t bufCount, loff_t* curOffset) {
 	printk(KERN_INFO "tzm: writing to device\n");
+	mutex_lock(&mutex);
 	ret = copy_from_user(virtual_device.data, bufSourceData, bufCount);
+	if(ret != 0) {
+		printk(KERN_ALERT "copy_from_user failed");
+		return -EFAULT;
+	}
+	mutex_unlock(&mutex);
 	return ret;
 }
 
 int device_close(struct inode *inode, struct file *filp) {
-	up(&virtual_device.sem);
 	printk(KERN_INFO "tzm: device closed\n");
 	return 0;
 }
@@ -82,14 +101,18 @@ static int driver_entry(void) {
 		printk(KERN_ALERT "tzm: couldn't add char device to kernel\n");
 		return ret;
 	}
-	sema_init(&virtual_device.sem, 1);
+
+	mutex_init(&mutex);
+	//virtual_device->readingFrom = 0;
+	//virtual_device->writingTo = 0;
+
 	return 0;
 }
 
 static void driver_exit(void) {
 	cdev_del(mycdev);
-
 	unregister_chrdev_region(dev_num, 1);
+	mutex_destroy(&mutex);
 	printk(KERN_INFO "tzm: module unloaded\n");
 }
 
