@@ -1,5 +1,11 @@
-rm /dev/tzm
-rmmod tzm
+if [ $(lsmod | grep "tzm" -c) -eq 1 ]; then
+	rm /dev/tzm
+	rmmod tzm
+fi
+
+
 insmod tzm.ko
 majorNr=$(grep $*tzm /proc/devices | cut -d ' ' -f 1)
-sudo mknod /dev/tzm c 249 0 
+mknod /dev/tzm c $majorNr 0 
+
+chmod a+rw /dev/tzm
