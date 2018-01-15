@@ -38,7 +38,7 @@ static char ret_string[50];
 
 
 int device_open(struct inode *inode, struct file *filp) {
-	printk(KERN_INFO "tzm: device opened\n");
+	printk("tzm: device opened\n");
 	mutex_lock(&mutex);
 	if(filp->f_mode & FMODE_READ) {
 		if(is_opened_to_read) {
@@ -63,11 +63,11 @@ ssize_t device_read(struct file* filp, char* bufStoreData, size_t bufCount, loff
 	printk(KERN_INFO "tzm: reading from device\n");
 
 	mutex_lock(&mutex);
-	snprintf(ret_string, sizeof(ret_string), "letters: %d, time: %d ms\n",
+	snprintf(ret_string, sizeof(ret_string), "letters: %d, time: %ds\n",
 				ret_val_number, ret_val_time);
 	ret = copy_to_user(bufStoreData, ret_string, bufCount);
 	if(ret != 0) {
-		printk(KERN_ALERT "copy_to_user failed");
+		printk("copy_to_user failed");
 	}
 	mutex_unlock(&mutex);
 	return bufCount - ret;
@@ -76,23 +76,25 @@ ssize_t device_read(struct file* filp, char* bufStoreData, size_t bufCount, loff
 static int count_char(char input[]) {
 	int i = 0;
 	while(input[i] != '\0' && input[i] != '\n') {
+		printk("checking char %c\n", input[i]);
 		i++;
 	}
 	return i;
 }
 ssize_t device_write(struct file* filp, const char* bufSourceData, size_t bufCount, loff_t* curOffset) {
-	printk(KERN_INFO "tzm: writing to device\n");
 	char input[bufCount];
+	printk(KERN_INFO "tzm: writing to device\n");
 	mutex_lock(&mutex);
 	if(old_time != -1) {
-		ret_val_time = jiffies_to_msecs(get_jiffies_64()) - old_time;
+		ret_val_time = (get_jiffies_64() - old_time) / HZ;
 	}
 	ret = copy_from_user(input, bufSourceData, bufCount);
 	if(ret != 0) {
-		printk(KERN_ALERT "copy_from_user failed");
+		printk("copy_from_user failed\n");
 	}
 	ret_val_number = count_char(input);
-	old_time = jiffies_to_msecs(get_jiffies_64());
+	old_time = get_jiffies_64();
+	printk(KERN_INFO "old_time: %d\n", old_time);
 
 	mutex_unlock(&mutex);
 	return bufCount - ret;
@@ -130,7 +132,7 @@ static int driver_entry(void) {
 		return ret;
 	}
 	major_number = MAJOR(dev_num);
-	printk(KERN_INFO "tzm: device name : %s, major number : %d\n", DEVICE_NAME, major_number);
+	printk("tzm: device name : %s, major number : %d\n", DEVICE_NAME, major_number);
 
 	mycdev = cdev_alloc();
 	mycdev->ops = &fops;
@@ -151,7 +153,7 @@ static void driver_exit(void) {
 	cdev_del(mycdev);
 	unregister_chrdev_region(dev_num, 1);
 	mutex_destroy(&mutex);
-	printk(KERN_INFO "tzm: module unloaded\n");
+	printk("tzm: module unloaded\n");
 }
 
 module_init(driver_entry);
