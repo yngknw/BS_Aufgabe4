@@ -60,9 +60,14 @@ int device_open(struct inode *inode, struct file *filp) {
 	return 0;
 }
 ssize_t device_read(struct file* filp, char* bufStoreData, size_t bufCount, loff_t* curOffset) {
+	int time;
 	printk(KERN_INFO "tzm: reading from device\n");
 
 	mutex_lock(&mutex);
+	if(old_time != -1) {
+		time = get_jiffies_64();
+		ret_val_time = (time - old_time) / HZ;
+	}
 	snprintf(ret_string, sizeof(ret_string), "letters: %d, time: %ds\n",
 				ret_val_number, ret_val_time);
 	ret = copy_to_user(bufStoreData, ret_string, bufCount);
@@ -85,9 +90,6 @@ ssize_t device_write(struct file* filp, const char* bufSourceData, size_t bufCou
 	char input[bufCount];
 	printk(KERN_INFO "tzm: writing to device\n");
 	mutex_lock(&mutex);
-	if(old_time != -1) {
-		ret_val_time = (get_jiffies_64() - old_time) / HZ;
-	}
 	ret = copy_from_user(input, bufSourceData, bufCount);
 	if(ret != 0) {
 		printk("copy_from_user failed\n");
